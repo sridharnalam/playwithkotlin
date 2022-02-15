@@ -58,14 +58,15 @@ class FirstFragment : Fragment() {
             Log.d(TAG, "Test OnClick(): executing thread ${Thread.currentThread().name}")
 //            globalScopeMemoryLeak()
 //            lifeCycleScope()
-//            withContext()
-//            withAsync()
-//            withLaunch()
+//            serialExecutionWithContext()
+//            parallelExecutionWithAsync()
+//            triggerAndForgotWithLaunch()
+            serialExecutionWithFlow()
 //            basicFlow()
 //            understandFlows()
 //            playWithFlowIntervals()
 //            retryWhen()
-            sharedFlowExample()
+//            sharedFlowExample()
             Log.i(TAG, "Test OnClick() executed")
         }
     }
@@ -106,7 +107,7 @@ class FirstFragment : Fragment() {
         }
     }
 
-    private fun withContext() {
+    private fun serialExecutionWithContext() {
         Log.d(TAG, "withContext() thread ${Thread.currentThread().name}")
         GlobalScope.launch {
             Log.d(TAG, "GlobalScope: Begin thread ${Thread.currentThread().name}")
@@ -120,7 +121,7 @@ class FirstFragment : Fragment() {
         }
     }
 
-    private fun withAsync() {
+    private fun parallelExecutionWithAsync() {
         Log.d(TAG, "withAsync() thread ${Thread.currentThread().name}")
         GlobalScope.launch {
             Log.d(TAG, "GlobalScope: Begin thread ${Thread.currentThread().name}")
@@ -134,7 +135,7 @@ class FirstFragment : Fragment() {
         }
     }
 
-    private fun withLaunch() {
+    private fun triggerAndForgotWithLaunch() {
         Log.d(TAG, "withLaunch() thread ${Thread.currentThread().name}")
         GlobalScope.launch {
             Log.d(TAG, "GlobalScope: Begin thread ${Thread.currentThread().name}")
@@ -155,7 +156,7 @@ class FirstFragment : Fragment() {
         Log.i(TAG, "Called getResultOne")
         delay(1000L)
         val message = "ResultOne"
-        Log.i(TAG, "Launch $message")
+        Log.i(TAG, "End of getResultOne() $message")
         return message
     }
 
@@ -164,8 +165,34 @@ class FirstFragment : Fragment() {
         Log.i(TAG, "Called getResultTwo")
         delay(100L)
         val message = "ResultTwo"
-        Log.i(TAG, "Launch $message")
+        Log.i(TAG, "End of getResultTwo() $message")
         return message
+    }
+
+    private fun serialExecutionWithFlow() {
+        Log.d(TAG, "withContextAndFlow() thread ${Thread.currentThread().name}")
+        GlobalScope.launch {
+            Log.d(TAG, "GlobalScope: Begin thread ${Thread.currentThread().name}")
+            Log.i(TAG, "Before flow call")
+            flow {
+                Log.d(TAG, "Flow thread ${Thread.currentThread().name}")
+                val value = 100
+                delay(10_000)
+                Log.i(TAG, "Flow emitting value: $value")
+                emit(value)
+            }.collect {
+                Log.d(TAG, "Flow collected thread ${Thread.currentThread().name}")
+                Log.i(TAG, "Flow collected value $it")
+            }
+            Log.i(TAG, "After flow call")
+            Log.i(TAG, "Before suspend methods call")
+            val result1 = withContext(Dispatchers.IO) { getResultOne() }
+            val result2 = withContext(Dispatchers.IO) { getResultTwo() }
+            Log.i(TAG, "After suspend method call")
+            val finalResult = result1 + result2
+            Log.d(TAG, "GlobalScope: End thread ${Thread.currentThread().name}")
+            Log.i(TAG, "Final result : $finalResult")
+        }
     }
 
     private fun basicFlow() {
