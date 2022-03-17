@@ -7,6 +7,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.lifecycle.lifecycleScope
+import com.ideahamster.playkotlin.Dummy.DemoInterface
 import com.ideahamster.playkotlin.common.function.TransformFunction
 import com.ideahamster.playkotlin.databinding.FragmentSecondBinding
 import com.ideahamster.playkotlin.model.*
@@ -21,7 +22,7 @@ class SecondFragment : Fragment() {
     var TAG = "SecondFragment"
     private var _binding: FragmentSecondBinding? = null
     private val _events = MutableSharedFlow<Response<SdkResponse>>()
-    private val events = _events.asSharedFlow()
+    private val events = _events.asSharedFlow().buffer(5)
 
     private val binding get() = _binding!!
 
@@ -39,18 +40,22 @@ class SecondFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
 
+        binding.buttonPublish.setOnClickListener {
+            requestConfigSuccess()
+            requestPushSuccess()
+            requestLinesSuccess()
+        }
         binding.buttonSecond.setOnClickListener {
 //            findNavController().navigate(R.id.action_SecondFragment_to_FirstFragment)
 
-            val job1 = lifecycleScope.launch {
-                doStateWiseOperation().collect {
-                    Log.i(TAG, "Final value $it")
-                }
+            lifecycleScope.launch {
+//                fetchData()
+                doStateWiseOperation()
             }
         }
     }
 
-    private suspend fun doStateWiseOperation(): Flow<Int> {
+    private fun doStateWiseLoop(): Flow<Int> {
         return flow {
             emit(Random.nextInt(6))
         }.flatMapMerge { key ->
@@ -85,7 +90,7 @@ class SecondFragment : Fragment() {
 
 
     private suspend fun fetchData() {
-        requestData()
+        requestConfigData()
             .catch { error ->
                 Log.e("Flow", error.toString())
             }
@@ -94,7 +99,38 @@ class SecondFragment : Fragment() {
             }
     }
 
-    private fun requestData(): Flow<ConfigureSuccess> {
+    private suspend fun doStateWiseOperation() {
+        var state: Int = 0;
+        var stateFlow = flowOf("0")
+        if(state ==0){
+            stateFlow = stateFlow.flatMapMerge {
+                requestConfigData()
+            }
+            state =1;
+        }
+        if(state ==1) {
+            stateFlow = stateFlow.flatMapMerge {
+                requestPushData()
+            }
+            state =2;
+        }
+        if(state ==2) {
+            stateFlow = stateFlow.flatMapMerge {
+                requestLinesData()
+            }
+            state =3;
+        }
+        stateFlow
+            .flowOn(Dispatchers.Default)
+            .catch { error ->
+                Log.e("Flow", error.toString())
+            }
+            .collect {
+                Log.i("Flow", "Result: $it")
+            }
+    }
+
+    private fun requestConfigData(): Flow<String> {
         return flow {
             requestConfigSuccess()
             /* observeSdkEvent(
@@ -108,31 +144,61 @@ class SecondFragment : Fragment() {
                 { configureFailure: ConfigureFailure -> RetryableException(configureFailure.toString()) }
             )
         }
+            .map {
+                Log.i("Flow", "requestConfigData: $it")
+                it.response
+            }
             .catch { error ->
-                Log.e("Flow", "requestData: $error")
+                Log.e("Flow", "requestConfigData: $error")
                 error.message?.let { error(it) }
             }
     }
 
-    private suspend fun FlowCollector<ConfigureSuccess>.observeEventFlow() {
-        flow {
-            //                requestConfigSuccess()
-            events.collect {
-                emit(it)
-            }
-        }
-            .filterThenTransform(
-                ConfigureSuccess::class.java,
-                ConfigureFailure::class.java
+    private fun requestPushData(): Flow<String> {
+        return flow {
+            requestPushSuccess()
+            /* observeSdkEvent(
+                 ConfigureSuccess::class.java,
+                 ConfigureFailure::class.java
+             )*/
+            observeSdkResponse(
+                PushSuccess::class.java,
+                PushFailure::class.java,
+                { configureSuccess: PushSuccess -> configureSuccess },
+                { pushFailure: PushFailure -> RetryableException(pushFailure.toString()) }
             )
+        }
+            .map {
+                Log.i("Flow", "requestPushData: $it")
+                it.response
+            }
             .catch { error ->
-                Log.e("Flow", "Case 1: $error")
+                Log.e("Flow", "requestPushData: $error")
                 error.message?.let { error(it) }
             }
-            .collect {
-                emit(it)
-                Log.i("FLOW", "Case 1: $it")
-                currentCoroutineContext().job.cancel()
+    }
+
+    private fun requestLinesData(): Flow<String> {
+        return flow {
+            requestLinesSuccess()
+            /* observeSdkEvent(
+                 ConfigureSuccess::class.java,
+                 ConfigureFailure::class.java
+             )*/
+            observeSdkResponse(
+                LinesSuccess::class.java,
+                LinesFailure::class.java,
+                { linesSuccess: LinesSuccess -> linesSuccess },
+                { linesFailure: LinesFailure -> RetryableException(linesFailure.toString()) }
+            )
+        }
+            .map {
+                Log.i("Flow", "requestLinesData: $it")
+                it.response
+            }
+            .catch { error ->
+                Log.e("Flow", "requestLinesData: $error")
+                error.message?.let { error(it) }
             }
     }
 
@@ -142,23 +208,18 @@ class SecondFragment : Fragment() {
         successTransformFunction: TransformFunction<T, R>,
         errorTransformFunction: TransformFunction<E, out Throwable>
     ) where T : SdkResponse, E : SdkResponse, R : SdkResponse {
-        flow {
-            events.collect { response ->
-                emit(response)
-            }
-        }
+        events
             .filterThenTransform(
                 successTargetClass,
                 failureTargetClass,
                 successTransformFunction,
                 errorTransformFunction
             )
-            .collect {
-                emit(it)
-                currentCoroutineContext().job.cancel()
+            .take(1)
+            .collect { response ->
+                emit(response)
             }
     }
-
 
     private fun <T, S, E, R> Flow<Response<T>>.filterThenTransform(
         successTargetClass: Class<S>,
@@ -182,31 +243,27 @@ class SecondFragment : Fragment() {
         }
     }
 
-    private suspend fun <R, E> FlowCollector<R>.observeSdkEvent(
+    suspend fun <R, E> FlowCollector<R>.observeSdkResponse(
         successTargetClass: Class<R>,
         failureTargetClass: Class<E>
     ) where R : SdkResponse, E : SdkResponse {
         flow {
-            events.collect { response ->
-                emit(response)
-            }
+            events
+                .take(1)
+                .collect { response ->
+                    emit(response)
+                }
         }
             .filterThenTransform(
                 successTargetClass,
                 failureTargetClass
             )
-            .catch { error ->
-                error.message?.let {
-                    error(it)
-                }
-            }
             .collect {
                 emit(it)
-                currentCoroutineContext().job.cancel()
             }
     }
 
-    private fun <T, R, E> Flow<Response<T>>.filterThenTransform(
+    fun <T, R, E> Flow<Response<T>>.filterThenTransform(
         successTargetClass: Class<R>,
         failureTargetClass: Class<E>
     ): Flow<R> where T : SdkResponse {
@@ -214,20 +271,15 @@ class SecondFragment : Fragment() {
             when (response) {
                 is Response.Success ->
                     if (successTargetClass.isInstance(response.responseBody)) {
-                        return@transform emit(successTargetClass.cast(response.responseBody))
+                        return@transform emit(successTargetClass.cast(response.responseBody)!!)
                     }
                 is Response.Error ->
                     if (failureTargetClass.isInstance(response.responseBody)) {
-                        error(response.responseBody)
+                        throw RetryableException(response.responseBody.toString())
                     }
             }
         }
     }
-
-    private inline fun <T> Flow<T>.filterResponse1(crossinline predicate: suspend (T) -> Boolean): Flow<T> =
-        transform { value ->
-            if (predicate(value)) return@transform emit(value)
-        }
 
 
     fun <T : SdkResponse?> returnObject(sdkResponse: T, clazz: Class<out SdkResponse>): T {
@@ -236,31 +288,6 @@ class SecondFragment : Fragment() {
             sdkResponse
         } else {
             sdkResponse
-        }
-    }
-
-    private fun <T : SdkResponse> Flow<Response<T>>.filterAndTransformResponse(
-        successTargetClass: Class<out SdkResponse>,
-        failureTargetClass: Class<out SdkResponse>
-    ): Flow<T> {
-        return transform { future ->
-            when (future) {
-                is Response.Success ->
-                    if (successTargetClass.isInstance(future.responseBody)) {
-//                        future.value as ConfigureSuccess
-//                        return@transform emit(successTargetClass.cast(future.response))
-                        return@transform emit(future.responseBody)
-                    }
-                is Response.Error ->
-                    if (failureTargetClass.isInstance(future.responseBody)) {
-//                        future.value as ConfigureFailure
-//                        return@transform emit(failureTargetClass.cast(future.response))
-                        return@transform emit(future.responseBody)
-                    }
-            }
-            /*if (successTargetClass.isInstance(future) || failureTargetClass.isInstance(future)) {
-                return@transform emit(future)
-            }*/
         }
     }
 
@@ -283,20 +310,74 @@ class SecondFragment : Fragment() {
 
     private fun requestConfigSuccess() {
         GlobalScope.launch {
-            delay(2000)
+            delayResponse()
             _events.emit(Response.Success(ConfigureSuccess("200")))
         }
     }
 
     private fun requestConfigError() {
         GlobalScope.launch {
-            delay(2000)
+            delayResponse()
             _events.emit(Response.Error(ConfigureFailure("400")))
         }
+    }
+
+    private fun requestPushSuccess() {
+        GlobalScope.launch {
+            delayResponse()
+            _events.emit(Response.Success(PushSuccess("200")))
+        }
+    }
+
+    private fun requestPushError() {
+        GlobalScope.launch {
+            delayResponse()
+            _events.emit(Response.Error(PushFailure("400")))
+        }
+    }
+
+    private fun requestLinesSuccess() {
+        GlobalScope.launch {
+            delayResponse()
+            _events.emit(Response.Success(LinesSuccess("200")))
+        }
+    }
+
+    private fun requestLinesError() {
+        GlobalScope.launch {
+            delayResponse()
+            _events.emit(Response.Error(LinesFailure("400")))
+        }
+    }
+
+    private suspend fun delayResponse() {
+        delay(100)
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+    }
+
+    fun iterateList(list: List<Long>): Flow<List<Boolean>> {
+        return flow<List<Boolean>> {
+            var stateList: MutableList<Boolean> = ArrayList()
+            for(id in list) {
+                stateList.add(isEven(id))
+            }
+            emit(stateList)
+        }
+    }
+
+     suspend fun isEven(num: Long): Boolean {
+        delay(1000)
+        return num%2 == 0L
+    }
+
+    fun isEvenFlow(num: Long): Flow<Boolean> {
+        return flow {
+            delay(1000)
+            emit(num%2 ==0)
+        }
     }
 }

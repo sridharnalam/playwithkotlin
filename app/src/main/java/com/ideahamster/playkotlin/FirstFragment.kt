@@ -46,8 +46,7 @@ class FirstFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         // Listen to the specified events
-        collectEvents()
-        collectEvents()
+//        collectEvents()
 
         binding.buttonFirst.setOnClickListener {
             Log.d(TAG, "Next OnClick(): executing thread ${Thread.currentThread().name}")
@@ -61,8 +60,9 @@ class FirstFragment : Fragment() {
 //            serialExecutionWithContext()
 //            parallelExecutionWithAsync()
 //            triggerAndForgotWithLaunch()
-            serialExecutionWithFlow()
-//            basicFlow()
+//            serialExecutionWithFlow()
+//            testGlobalScopePostExecution()
+            basicFlow()
 //            understandFlows()
 //            playWithFlowIntervals()
 //            retryWhen()
@@ -169,6 +169,18 @@ class FirstFragment : Fragment() {
         return message
     }
 
+    private fun testGlobalScopePostExecution() {
+        Log.d(TAG, "testGlobalScopePostExecution() thread ${Thread.currentThread().name}")
+        GlobalScope.launch {
+            Log.d(TAG, "GlobalScope: Begin thread ${Thread.currentThread().name}")
+            Log.i(TAG, "GlobalScope launch executing")
+            delay(10_000)
+        }.invokeOnCompletion {
+            Log.d(TAG, "GlobalScope: invokeOnCompletion thread ${Thread.currentThread().name}")
+            Log.i(TAG, "GlobalScope: invokeOnCompletion called")
+        }
+    }
+
     private fun serialExecutionWithFlow() {
         Log.d(TAG, "withContextAndFlow() thread ${Thread.currentThread().name}")
         GlobalScope.launch {
@@ -197,14 +209,19 @@ class FirstFragment : Fragment() {
 
     private fun basicFlow() {
         Log.d(TAG, "basicFlow() thread ${Thread.currentThread().name}")
-        GlobalScope.launch(Dispatchers.IO) {
+        lifecycleScope.launchWhenStarted {
             Log.d(TAG, "GlobalScope thread ${Thread.currentThread().name}")
-            flow {
+            flow<Int> {
                 Log.d(TAG, "flow thread ${Thread.currentThread().name}")
-                emit(1)
+                throw Exception("Forced exception")
+//                emit(1)
             }
                 .flowOn(Dispatchers.Default)
-                .collect {
+                .catch { error: Throwable ->
+                    Log.d(TAG, "Collected thread ${Thread.currentThread().name}")
+                    Log.i(TAG, "Collected value $error")
+                }
+                .collect { it: Int ->
                     Log.d(TAG, "Collected thread ${Thread.currentThread().name}")
                     Log.i(TAG, "Collected value $it")
                 }
