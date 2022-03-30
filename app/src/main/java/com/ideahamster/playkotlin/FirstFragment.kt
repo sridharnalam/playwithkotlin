@@ -14,7 +14,12 @@ import com.ideahamster.playkotlin.model.ConfigureFailure
 import com.ideahamster.playkotlin.model.ConfigureSuccess
 import com.ideahamster.playkotlin.model.SdkResponse
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.ChannelResult
+import kotlinx.coroutines.channels.onFailure
+import kotlinx.coroutines.channels.onSuccess
+import kotlinx.coroutines.channels.produce
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.selects.select
 import kotlin.random.Random
 
 /**
@@ -62,12 +67,35 @@ class FirstFragment : Fragment() {
 //            triggerAndForgotWithLaunch()
 //            serialExecutionWithFlow()
 //            testGlobalScopePostExecution()
-            basicFlow()
+//            basicFlow()
+//            flowFirst()
 //            understandFlows()
 //            playWithFlowIntervals()
 //            retryWhen()
 //            sharedFlowExample()
+            collectWhicheverFirst()
             Log.i(TAG, "Test OnClick() executed")
+        }
+    }
+
+    private fun collectWhicheverFirst() {
+        Log.d(TAG, "collectWhicheverFirst() thread ${Thread.currentThread().name}")
+        GlobalScope.launch {
+            Log.d(TAG, "GlobalScope: Begin thread ${Thread.currentThread().name}")
+            race(listOf(randomDelayFlow(), randomDelayFlow()))
+                .collect {
+                    Log.d(TAG, "Collected thread ${Thread.currentThread().name}")
+                    Log.i(TAG, "Collected value $it")
+                }
+        }
+    }
+
+    private fun randomDelayFlow(): Flow<String> {
+        return flow {
+            val delayTime = Random.nextLong(1000)
+            Log.d(TAG, "randomDelayFlow $delayTime")
+            delay(delayTime)
+            emit("Fastest $delayTime")
         }
     }
 
@@ -207,14 +235,27 @@ class FirstFragment : Fragment() {
         }
     }
 
+    private fun flowFirst() {
+        Log.d(TAG, "flowFirst() thread ${Thread.currentThread().name}")
+        lifecycleScope.launchWhenStarted {
+            Log.d(TAG, "lifecycleScope thread ${Thread.currentThread().name}")
+            val result = flow {
+                delay(5000)
+                emit(true)
+            }.first()
+            Log.i(TAG, "Final result : $result")
+        }
+    }
+
     private fun basicFlow() {
         Log.d(TAG, "basicFlow() thread ${Thread.currentThread().name}")
         lifecycleScope.launchWhenStarted {
-            Log.d(TAG, "GlobalScope thread ${Thread.currentThread().name}")
+            Log.d(TAG, "lifecycleScope thread ${Thread.currentThread().name}")
             flow<Int> {
                 Log.d(TAG, "flow thread ${Thread.currentThread().name}")
-                throw Exception("Forced exception")
-//                emit(1)
+//                throw Exception("Forced exception")
+                delay(2000)
+                emit(1)
             }
                 .flowOn(Dispatchers.Default)
                 .catch { error: Throwable ->
@@ -424,6 +465,60 @@ class FirstFragment : Fragment() {
 
     private fun isInstanceOf(obj: Any, targetClass: Class<out SdkResponse?>): Boolean {
         return targetClass.isInstance(obj)
+    }
+
+//    @ExperimentalCoroutinesApi
+    fun <T> race(flows: Iterable<Flow<T>>): Flow<T> = flow {
+        coroutineScope {
+            // 1. Collect to all source Flows
+            val channels = flows.map { flow ->
+                // Produce the values using the default (rendezvous) channel
+                produce {
+                    flow.collect {
+                        send(it)
+                        yield() // Emulate fairness, giving each flow chance to emit
+                    }
+                }
+            }
+
+            // If channels List is empty, just return and complete result Flow.
+            if (channels.isEmpty()) {
+                return@coroutineScope
+            }
+
+            // If channels List has single element, just forward all events from it.
+            channels
+                .singleOrNull()
+                ?.let { return@coroutineScope emitAll(it) }
+
+            // 2. When a new event arrives from a source Flow, pass it down to a collector.
+            // Select expression makes it possible to await multiple suspending functions simultaneously
+            // and select the first one that becomes available.
+            val (winnerIndex, winnerResult) = select<Pair<Int, ChannelResult<T>>> {
+                channels.forEachIndexed { index, channel ->
+                    channel.onReceiveCatching {
+                        index to it
+                    }
+                }
+            }
+
+            // 3. Cancel all other Flows.
+            channels.forEachIndexed { index, channel ->
+                if (index != winnerIndex) {
+                    channel.cancel()
+                }
+            }
+
+            // 4. Forward all events from the winner Flow .
+            winnerResult
+                .onSuccess {
+                    emit(it)
+                    emitAll(channels[winnerIndex])
+                }
+                .onFailure {
+                    it?.let { throw it }
+                }
+        }
     }
     /** End of Utility methods **/
 }

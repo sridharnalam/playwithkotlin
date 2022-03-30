@@ -377,7 +377,7 @@ class SecondFragment : Fragment() {
     fun isEvenFlow(num: Long): Flow<Boolean> {
         return flow {
             delay(1000)
-            emit(num%2 ==0)
+            emit(num%2 == 0L)
         }
     }
 }
