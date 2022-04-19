@@ -4,8 +4,10 @@
     <!-- Strings used for fragments for navigation -->
     <string name="first_fragment_label">First Fragment</string>
     <string name="second_fragment_label">Second Fragment</string>
+    <string name="test_fragment_label">Test Fragment</string>
     <string name="next">Next</string>
     <string name="test">Test</string>
+    <string name="play">Play</string>
     <string name="previous">Previous</string>
     <string name="publish">Publish</string>
 

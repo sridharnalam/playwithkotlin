@@ -37,10 +37,8 @@ class FirstFragment : Fragment() {
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-
         _binding = FragmentFirstBinding.inflate(inflater, container, false)
         return binding.root
-
     }
 
     override fun onDestroyView() {
@@ -53,12 +51,17 @@ class FirstFragment : Fragment() {
         // Listen to the specified events
 //        collectEvents()
 
+        binding.buttonTest.setOnClickListener {
+            Log.d(TAG, "Test OnClick(): executing thread ${Thread.currentThread().name}")
+            findNavController().navigate(R.id.action_FirstFragment_to_TestableFragment)
+        }
+
         binding.buttonFirst.setOnClickListener {
             Log.d(TAG, "Next OnClick(): executing thread ${Thread.currentThread().name}")
             findNavController().navigate(R.id.action_FirstFragment_to_SecondFragment)
         }
 
-        binding.buttonTest.setOnClickListener {
+        binding.buttonPlay.setOnClickListener {
             Log.d(TAG, "Test OnClick(): executing thread ${Thread.currentThread().name}")
 //            globalScopeMemoryLeak()
 //            lifeCycleScope()

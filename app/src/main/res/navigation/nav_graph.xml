@@ -14,6 +14,10 @@
         <action
             android:id="@+id/action_FirstFragment_to_SecondFragment"
             app:destination="@id/SecondFragment" />
+
+        <action
+            android:id="@+id/action_FirstFragment_to_TestableFragment"
+            app:destination="@id/TestableFragment" />
     </fragment>
     <fragment
         android:id="@+id/SecondFragment"
@@ -23,6 +27,16 @@
 
         <action
             android:id="@+id/action_SecondFragment_to_FirstFragment"
+            app:destination="@id/FirstFragment" />
+    </fragment>
+    <fragment
+        android:id="@+id/TestableFragment"
+        android:name="com.ideahamster.playkotlin.TestableFragment"
+        android:label="@string/test_fragment_label"
+        tools:layout="@layout/fragment_testable">
+
+        <action
+            android:id="@+id/action_TestFragment_to_FirstFragment"
             app:destination="@id/FirstFragment" />
     </fragment>
 </navigation>
